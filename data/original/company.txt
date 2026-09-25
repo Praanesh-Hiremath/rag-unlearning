@@ -1,0 +1,18 @@
+Acme Research Institute
+
+Acme Research Institute was founded in 2018.
+
+The institute's primary research areas are artificial intelligence,
+machine learning, information retrieval, and natural language processing.
+
+The institute has three research divisions:
+1. Machine Learning
+2. Information Retrieval
+3. Natural Language Processing
+
+The Information Retrieval division studies search systems,
+retrieval-augmented generation, and document ranking.
+
+The institute's main laboratory is located in Bengaluru.
+
+The institute launched its RAG research program in 2024.

@@ -1,0 +1,17 @@
+RAG Unlearning Project
+
+The RAG Unlearning Project investigates whether information can be
+selectively removed from retrieval-augmented generation systems.
+
+The project studies two initial unlearning approaches.
+
+The first approach is hard index deletion. Under this approach,
+the vector representations associated with a target document are
+removed from the retrieval index.
+
+The second approach is prompt constraint. Under this approach,
+the target information may remain in the retrieval system, but
+the language model receives an instruction not to disclose it.
+
+The project evaluates whether these approaches actually prevent
+the target information from being recovered.
