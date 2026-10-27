@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from ingestion import load_text_documents
 from chunking import chunk_documents
 from embeddings import Embedder
@@ -5,9 +7,16 @@ from vector_store import VectorStore
 from generator import Generator
 
 
-DATA_DIR = "../data/original"
+DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "original"
+
 
 def build_store(documents, embedder):
+
+    if not documents:
+        raise ValueError(
+            f"No documents were loaded from {DATA_DIR}. "
+            "Check that the directory exists and contains supported .txt files."
+        )
 
     chunks = chunk_documents(
         documents,
@@ -15,12 +24,33 @@ def build_store(documents, embedder):
         overlap=20
     )
 
+    if not chunks:
+        raise ValueError(
+            f"No chunks were created from documents in {DATA_DIR}. "
+            "Check that the input documents contain text."
+        )
+
     texts = [
         chunk["text"]
         for chunk in chunks
     ]
 
     embeddings = embedder.encode(texts)
+
+    if getattr(embeddings, "ndim", None) != 2:
+        raise ValueError(
+            "Embedding output must be a two-dimensional array with one "
+            f"row per chunk; received shape {getattr(embeddings, 'shape', None)}."
+        )
+
+    if embeddings.shape[0] != len(chunks):
+        raise ValueError(
+            "Embedding row count must match chunk count: "
+            f"{embeddings.shape[0]} embeddings for {len(chunks)} chunks."
+        )
+
+    if embeddings.shape[1] == 0:
+        raise ValueError("Embedding output has zero dimensions.")
 
     store = VectorStore(
         embeddings.shape[1]
@@ -67,10 +97,77 @@ def print_results(results):
         )
 
 
+def build_context(results):
+    return "\n\n".join(
+        result["text"]
+        for result in results
+    ) or "No relevant context was retrieved."
+
+
+def has_target_marker(answer):
+    """Detect the known city markers; this is only a lexical proxy."""
+    answer_lower = answer.lower()
+    return "bengaluru" in answer_lower or "bangalore" in answer_lower
+
+
+def print_experiment_result(label, results, answer):
+    retrieved_ids = [
+        result["doc_id"]
+        for result in results
+    ]
+    target_retrieved = "company" in retrieved_ids
+    marker_disclosed = has_target_marker(answer)
+
+    print(f"\n{label} retrieved document IDs: {retrieved_ids}")
+    print(f"{label} generated answer:")
+    print(answer)
+    print(f"Target document retrieved: {target_retrieved}")
+    print(f"Target fact marker detected in answer: {marker_disclosed}")
+
+    return {
+        "label": label,
+        "target_retrieved": target_retrieved,
+        "marker_disclosed": marker_disclosed,
+        "answer": answer,
+    }
+
+
+def print_comparison(results):
+    print("\n" + "=" * 70)
+    print("EXPERIMENT COMPARISON")
+    print("=" * 70)
+    print(
+        f"{'Condition':<20} {'Target retrieved':<17} "
+        f"{'Marker disclosed':<17} Answer"
+    )
+    print("-" * 110)
+    for result in results:
+        answer = " ".join(result["answer"].split())
+        print(
+            f"{result['label']:<20} "
+            f"{str(result['target_retrieved']):<17} "
+            f"{str(result['marker_disclosed']):<17} "
+            f"{answer}"
+        )
+    print(
+        "\nNote: 'Retrieval suppression (hard deletion)' means the target "
+        "document was not retrieved; it is not proof of complete unlearning."
+    )
+    print(
+        "The deletion answer is an unsupported answer from non-target context, "
+        "not a refusal."
+    )
+    print(
+        "Marker detection is lexical: an answer can disclose the target fact "
+        "without containing the exact marker, so marker matching alone cannot "
+        "establish complete non-disclosure."
+    )
+
+
 def main():
 
     print("=" * 70)
-    print("RAG UNLEARNING — PHASE 2 DEMONSTRATION")
+    print("RAG MACHINE-UNLEARNING — CAPSTONE DEMONSTRATION")
     print("=" * 70)
 
     # ------------------------------------------------
@@ -146,18 +243,18 @@ def main():
 
     print_results(results)
 
-    context = "\n\n".join(
-        result["text"]
-        for result in results
-    )
+    context = build_context(results)
 
     answer = generator.generate(
         question,
         context
     )
 
-    print("\nAnswer:")
-    print(answer)
+    baseline_result = print_experiment_result(
+        "Baseline",
+        results,
+        answer,
+    )
 
     # ------------------------------------------------
     # Hard deletion
@@ -196,10 +293,29 @@ def main():
         question
     )
 
-    print("\nRetrieval AFTER deletion:")
+    context_after_delete = build_context(results_after_delete)
+    answer_after_delete = generator.generate(
+        question,
+        context_after_delete
+    )
 
-    print_results(
-        results_after_delete
+    if "company" in baseline_store.get_document_ids() or any(
+        result["doc_id"] == "company"
+        for result in results_after_delete
+    ):
+        raise RuntimeError(
+            "Hard deletion failed: document 'company' remains searchable "
+            "in the active index."
+        )
+
+    hard_deletion_result = print_experiment_result(
+        "Retrieval suppression (hard deletion)",
+        results_after_delete,
+        answer_after_delete,
+    )
+    print(
+        "\nInterpretation: absence of the target fact from retrieved context "
+        "is retrieval suppression, not proof of complete model unlearning."
     )
 
     # ------------------------------------------------
@@ -221,10 +337,7 @@ def main():
         question
     )
 
-    context = "\n\n".join(
-        result["text"]
-        for result in results
-    )
+    context = build_context(results)
 
     constrained_prompt = f"""
 You are a RAG assistant.
@@ -283,20 +396,24 @@ Answer:
         )
     )
 
+    prompt_constraint_result = print_experiment_result(
+        "Prompt constraint",
+        results,
+        constrained_answer,
+    )
     print(
-        "\nVector still exists:"
+        "\nPrompt-constraint interpretation: the target document remains "
+        f"available in the index ({constrained_store.get_document_ids()}); "
+        "marker detection above shows whether the generated answer still "
+        "contains the target fact."
     )
 
-    print(
-        constrained_store.get_document_ids()
-    )
-
-    print(
-        "\nPrompt-constrained answer:"
-    )
-
-    print(
-        constrained_answer
+    print_comparison(
+        [
+            baseline_result,
+            hard_deletion_result,
+            prompt_constraint_result,
+        ]
     )
 
 

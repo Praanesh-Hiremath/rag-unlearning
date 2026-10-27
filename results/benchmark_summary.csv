@@ -1,0 +1,4 @@
+﻿condition,target_queries,target_leaks,target_leakage_rate,target_abstentions,unsupported_or_wrong_target_answers,target_queries_without_target_doc_retrieved,retrieval_suppression_rate,control_queries,control_marker_matches,control_marker_match_rate
+baseline,9,8,0.8889,0,1,0,0.0,3,3,1.0
+hard_deletion,9,0,0.0,0,9,9,1.0,3,3,1.0
+prompt_constraint,9,7,0.7778,0,2,0,0.0,3,3,1.0

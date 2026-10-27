@@ -1,6 +1,6 @@
+
 import torch
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
-
 
 MODEL_NAME = "google/flan-t5-small"
 
@@ -9,39 +9,23 @@ class Generator:
     def __init__(self):
         print(f"Loading generation model: {MODEL_NAME}")
 
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            MODEL_NAME
-        )
+        self.tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+        self.model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_NAME)
 
-        self.model = AutoModelForSeq2SeqLM.from_pretrained(
-            MODEL_NAME
-        )
-
-        # Explicitly use CPU.
         self.device = torch.device("cpu")
         self.model.to(self.device)
-
         self.model.eval()
 
-    def generate(self, question, context):
+    def generate(self, question, context, instruction=None):
+        instruction_text = ""
+        if instruction:
+            instruction_text = (
+                f"\nAdditional instruction:\n{instruction}\n"
+            )
 
         prompt = f"""
-You are a question-answering system for a retrieval-augmented
-generation system.
-
-Answer the question using ONLY the information explicitly stated
-in the context.
-
-Do NOT:
-- use outside knowledge
-- infer information that is not explicitly stated
-- confuse "where" with "when"
-- confuse "who" with "what"
-- guess an answer
-
-If the context does not explicitly contain the answer, respond:
-"The answer is not specified in the provided context."
-
+Answer the question using only the provided context.
+{instruction_text}
 Context:
 {context}
 
@@ -50,7 +34,6 @@ Question:
 
 Answer:
 """
-
         inputs = self.tokenizer(
             prompt,
             return_tensors="pt",
@@ -70,9 +53,7 @@ Answer:
                 do_sample=False,
             )
 
-        answer = self.tokenizer.decode(
+        return self.tokenizer.decode(
             outputs[0],
             skip_special_tokens=True,
         )
-
-        return answer
